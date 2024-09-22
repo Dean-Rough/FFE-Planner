@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>FFE Product Manager</title>
+    <link href="../vendor/modus/modus.min.css" rel="stylesheet">
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background-color: #f2f2f2; cursor: pointer; }
+        .sortable:hover { background-color: #e2e2e2; }
+        .action-button { margin-right: 5px; }
+    </style>
+</head>
+<body class="bg-panel-background">
+    <h1 class="text-primary">FFE Product Manager</h1>
+    <input type="text" id="searchInput" onkeyup="filterTable()" placeholder="Search for products.." title="Type in a name">
+    <table id="ffeTable" class="table table-striped">
+        <thead>
+            <tr>
+                <th>Thumbnail</th>
+                <th class="sortable" onclick="sortTable(1)">ID</th>
+                <th class="sortable" onclick="sortTable(2)">Name</th>
+                <th class="sortable" onclick="sortTable(3)">Quantity</th>
+                <th class="sortable" onclick="sortTable(4)">Cost per Unit</th>
+                <th class="sortable" onclick="sortTable(5)">Total Cost</th>
+                <th class="sortable" onclick="sortTable(6)">FFE Type</th>
+                <th class="sortable" onclick="sortTable(7)">Supplier</th>
+                <th>Product URL</th>
+                <th>Additional Info</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody id="ffeTableBody">
+            <!-- Table rows will be populated dynamically -->
+        </tbody>
+    </table>
+
+    <script>
+        // Function to request FFE products from Ruby
+        function requestFFEProducts() {
+            window.sketchup.getFFEProducts((products_json) => {
+                try {
+                    const products = JSON.parse(products_json);
+                    populateTable(products);
+                } catch (e) {
+                    console.error("Failed to parse products JSON:", e);
+                }
+            });
+        }
+
+        function populateTable(products) {
+            console.log("populateTable called with data:", products);
+            const tableBody = document.getElementById('ffeTableBody');
+            tableBody.innerHTML = '';
+
+            products.forEach(product => {
+                console.log("Processing product:", product);
+                const row = tableBody.insertRow();
+                row.innerHTML = `
+                    <td><img src="${product.thumbnail}" alt="${product.name}" width="50" height="50"></td>
+                    <td><input type="text" value="${product.id}" onchange="updateID('${product.id}', this.value)"></td>
+                    <td><input type="text" value="${product.name}" onchange="updateName('${product.id}', this.value)"></td>
+                    <td>${product.quantity}</td>
+                    <td><input type="number" value="${product.cost_per_unit}" onchange="updateCostPerUnit('${product.id}', this.value)"></td>
+                    <td>${(product.total_cost).toFixed(2)}</td>
+                    <td>
+                        <select onchange="updateFFEType('${product.id}', this.value)">
+                            <option value="Furniture" ${product.ffe_type === 'Furniture' ? 'selected' : ''}>Furniture</option>
+                            <option value="Lighting" ${product.ffe_type === 'Lighting' ? 'selected' : ''}>Lighting</option>
+                            <option value="AV" ${product.ffe_type === 'AV' ? 'selected' : ''}>AV</option>
+                            <option value="Utilities" ${product.ffe_type === 'Utilities' ? 'selected' : ''}>Utilities</option>
+                            <option value="Custom" ${product.ffe_type === 'Custom' ? 'selected' : ''}>Custom</option>
+                        </select>
+                    </td>
+                    <td><input type="text" value="${product.supplier}" onchange="updateSupplier('${product.id}', this.value)"></td>
+                    <td><input type="text" value="${product.link}" onchange="updateLink('${product.id}', this.value)"></td>
+                    <td><input type="text" value="${product.additional_info}" onchange="updateAdditionalInfo('${product.id}', this.value)"></td>
+                    <td>
+                        <button class="action-button" onclick="untagAsFFE('${product.id}')">Untag as FFE</button>
+                        <button class="action-button" onclick="exportAsDWG('${product.id}')">Export as DWG</button>
+                    </td>
+                `;
+            });
+        }
+
+        function sortTable(n) {
+            const table = document.getElementById("ffeTable");
+            let switching = true;
+            let dir = "asc";
+            let switchcount = 0;
+            while (switching) {
+                switching = false;
+                const rows = table.rows;
+                for (let i = 1; i < (rows.length - 1); i++) {
+                    let shouldSwitch = false;
+                    const x = rows[i].getElementsByTagName("TD")[n];
+                    const y = rows[i + 1].getElementsByTagName("TD")[n];
+                    let xContent = x.innerText || x.textContent;
+                    let yContent = y.innerText || y.textContent;
+
+                    if (!isNaN(parseFloat(xContent)) && !isNaN(parseFloat(yContent))) {
+                        xContent = parseFloat(xContent);
+                        yContent = parseFloat(yContent);
+                    }
+
+                    if (dir === "asc") {
+                        if (xContent > yContent) {
+                            shouldSwitch = true;
+                            break;
+                        }
+                    } else if (dir === "desc") {
+                        if (xContent < yContent) {
+                            shouldSwitch = true;
+                            break;
+                        }
+                    }
+                }
+                if (shouldSwitch) {
+                    rows[i].parentNode.insertBefore(rows[i + 1], rows[i]);
+                    switching = true;
+                    switchcount++;
+                } else {
+                    if (switchcount === 0 && dir === "asc") {
+                        dir = "desc";
+                        switching = true;
+                    }
+                }
+            }
+        }
+
+        function filterTable() {
+            const input = document.getElementById("searchInput");
+            const filter = input.value.toLowerCase();
+            const table = document.getElementById("ffeTable");
+            const trs = table.getElementsByTagName("tr");
+
+            for (let i = 1; i < trs.length; i++) {
+                const tds = trs[i].getElementsByTagName("td");
+                let show = false;
+                for (let j = 1; j < tds.length - 2; j++) { // Exclude Actions and Thumbnail columns
+                    if (tds[j].innerText.toLowerCase().includes(filter)) {
+                        show = true;
+                        break;
+                    }
+                }
+                trs[i].style.display = show ? "" : "none";
+            }
+        }
+
+        function updateID(productId, value) {
+            window.sketchup.update_name(`${productId}&${value}`);
+        }
+
+        function updateName(productId, value) {
+            window.sketchup.update_name(`${productId}&${value}`);
+        }
+
+        function updateCostPerUnit(productId, value) {
+            window.sketchup.update_cost_per_unit(`${productId}&${value}`);
+        }
+
+        function updateFFEType(productId, value) {
+            window.sketchup.update_ffe_type(`${productId}&${value}`);
+        }
+
+        function updateSupplier(productId, value) {
+            window.sketchup.update_supplier(`${productId}&${encodeURIComponent(value)}`);
+        }
+
+        function updateLink(productId, value) {
+            window.sketchup.update_link(`${productId}&${encodeURIComponent(value)}`);
+        }
+
+        function updateAdditionalInfo(productId, value) {
+            window.sketchup.update_additional_info(`${productId}&${encodeURIComponent(value)}`);
+        }
+
+        function untagAsFFE(productId) {
+            window.sketchup.untag_as_ffe(productId);
+        }
+
+        function exportAsDWG(productId) {
+            window.sketchup.export_as_dwg(productId);
+        }
+
+        // Initial population
+        window.onload = function() {
+            requestFFEProducts();
+        }
+    </script>
+</body>
+</html>
